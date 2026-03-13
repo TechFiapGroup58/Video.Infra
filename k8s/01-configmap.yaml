@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fiapx-config
+  namespace: fiapx
+data:
+  # RabbitMQ (rodando no EKS via Helm - MIT)
+  RABBITMQ_HOST: "rabbitmq.fiapx.svc.cluster.local"
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_VHOST: "/"
+
+  # PostgreSQL (rodando no EKS via Helm - MIT)
+  POSTGRES_HOST: "postgresql.fiapx.svc.cluster.local"
+  POSTGRES_PORT: "5432"
+
+  # Auth
+  AUTH_DB_NAME: "fiapx_auth"
+  AUTH_ASPNETCORE_URLS: "http://+:8080"
+
+  # Upload
+  UPLOAD_DB_NAME: "fiapx_upload"
+  UPLOAD_ASPNETCORE_URLS: "http://+:8080"
+
+  # Processor
+  PROCESSOR_DB_NAME: "fiapx_processor"
+
+  # Frontend (appsettings.Production.json montado como volume)
+  FRONTEND_APPSETTINGS: |
+    {
+      "Services": {
+        "Auth":   "http://auth-service.fiapx.svc.cluster.local/",
+        "Upload": "http://upload-service.fiapx.svc.cluster.local/"
+      }
+    }

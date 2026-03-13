@@ -1,0 +1,32 @@
+# ingress-nginx - Helm Chart (licenca Apache 2.0)
+# Substitui o AWS ALB Controller ($16+/mes) por nginx no proprio cluster
+# Instalacao: helm install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace -f k8s/05-ingress-nginx-values.yaml
+#
+# helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+
+controller:
+  replicaCount: 1
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 90Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  # Usa NLB da AWS (custo ~$16/mes fixo) - necessario para receber trafego externo
+  service:
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+      service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "false"
+
+  # Desabilita metricas e admission webhook para economizar recursos
+  admissionWebhooks:
+    enabled: false
+  metrics:
+    enabled: false
+
+defaultBackend:
+  enabled: false

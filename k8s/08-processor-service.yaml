@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: processor-service
+  namespace: fiapx
+  labels:
+    app: processor-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: processor-service
+  template:
+    metadata:
+      labels:
+        app: processor-service
+      annotations:
+        iam.amazonaws.com/role: REPLACE_POD_S3_ROLE_ARN
+    spec:
+      serviceAccountName: fiapx-upload   # reutiliza o mesmo SA com acesso S3
+      containers:
+        - name: processor-service
+          image: REPLACE_AWS_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/fiapx/processor-service:latest
+          env:
+            - name: ConnectionStrings__DefaultConnection
+              value: "Host=$(POSTGRES_HOST);Port=$(POSTGRES_PORT);Database=$(PROCESSOR_DB_NAME);Username=$(POSTGRES_USER);Password=$(POSTGRES_PASSWORD)"
+            - name: POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: fiapx-config
+                  key: POSTGRES_HOST
+            - name: POSTGRES_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: fiapx-config
+                  key: POSTGRES_PORT
+            - name: PROCESSOR_DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: fiapx-config
+                  key: PROCESSOR_DB_NAME
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: fiapx-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fiapx-secrets
+                  key: POSTGRES_PASSWORD
+            - name: RabbitMQ__Host
+              valueFrom:
+                configMapKeyRef:
+                  name: fiapx-config
+                  key: RABBITMQ_HOST
+            - name: RabbitMQ__Username
+              valueFrom:
+                secretKeyRef:
+                  name: fiapx-secrets
+                  key: RABBITMQ_USER
+            - name: RabbitMQ__Password
+              valueFrom:
+                secretKeyRef:
+                  name: fiapx-secrets
+                  key: RABBITMQ_PASSWORD
+            - name: AWS__S3BucketName
+              valueFrom:
+                secretKeyRef:
+                  name: fiapx-secrets
+                  key: S3_BUCKET_NAME
+            - name: AWS__Region
+              valueFrom:
+                secretKeyRef:
+                  name: fiapx-secrets
+                  key: AWS_REGION
+          resources:
+            requests:
+              cpu: 100m      # FFmpeg e mais pesado
+              memory: 256Mi
+            limits:
+              cpu: 800m
+              memory: 512Mi
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: processor-service
+  namespace: fiapx
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: processor-service
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60   # escala mais cedo pois processamento e CPU-bound

@@ -1,0 +1,46 @@
+# PostgreSQL - Bitnami Helm Chart (licenca Apache 2.0 / MIT)
+# Instalacao: helm install postgresql bitnami/postgresql -n fiapx -f k8s/04-postgresql-values.yaml
+#
+# Uma unica instancia PostgreSQL com 3 databases (auth, upload, processor)
+# Economiza ~$66/mes vs 3x RDS db.t3.micro
+
+auth:
+  username: fiapx
+  existingSecret: fiapx-secrets
+  secretKeys:
+    adminPasswordKey: POSTGRES_PASSWORD
+    userPasswordKey: POSTGRES_PASSWORD
+
+primary:
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: gp2
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Cria os 3 databases automaticamente na inicializacao
+  initdb:
+    scripts:
+      init.sql: |
+        CREATE DATABASE fiapx_auth;
+        CREATE DATABASE fiapx_upload;
+        CREATE DATABASE fiapx_processor;
+        GRANT ALL PRIVILEGES ON DATABASE fiapx_auth TO fiapx;
+        GRANT ALL PRIVILEGES ON DATABASE fiapx_upload TO fiapx;
+        GRANT ALL PRIVILEGES ON DATABASE fiapx_processor TO fiapx;
+
+readReplicas:
+  replicaCount: 0    # sem replicas para economizar recursos
+
+metrics:
+  enabled: false
+
+service:
+  type: ClusterIP

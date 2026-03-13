@@ -1,0 +1,92 @@
+name: CI/CD - Frontend
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/**'
+      - '.github/workflows/ci-cd-frontend.yml'
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'src/**'
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: fiapx/frontend
+  EKS_DEPLOYMENT: frontend
+  EKS_NAMESPACE: fiapx
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet restore
+      - run: dotnet build --no-restore -c Release
+      - name: Test with coverage
+        run: |
+          dotnet test --no-build -c Release \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./coverage
+      - uses: danielpalme/ReportGenerator-GitHub-Action@5
+        with:
+          reports: coverage/**/coverage.cobertura.xml
+          targetdir: coverage/report
+          reporttypes: JsonSummary
+      - run: |
+          COVERAGE=$(jq '.summary.linecoverage' coverage/report/Summary.json)
+          awk "BEGIN{exit ($COVERAGE < 80)}" || (echo "Cobertura abaixo de 80%" && exit 1)
+
+  deploy:
+    name: Deploy
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build & Push
+        env:
+          IMAGE_URI: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+        run: |
+          docker build -f docker/frontend/Dockerfile \
+            -t $IMAGE_URI:${{ github.sha }} -t $IMAGE_URI:latest \
+            ../Video.Frontend
+          docker push $IMAGE_URI:${{ github.sha }}
+          docker push $IMAGE_URI:latest
+      - run: aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
+      - name: Deploy
+        env:
+          IMAGE_URI: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+        run: |
+          kubectl -n ${{ env.EKS_NAMESPACE }} set image deployment/${{ env.EKS_DEPLOYMENT }} \
+            ${{ env.EKS_DEPLOYMENT }}=$IMAGE_URI:${{ github.sha }}
+          kubectl -n ${{ env.EKS_NAMESPACE }} rollout status deployment/${{ env.EKS_DEPLOYMENT }} --timeout=3m
+
+  auto-merge-develop:
+    name: Auto-merge to develop
+    needs: test
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
+    steps:
+      - uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+          pull-request-number: ${{ github.event.pull_request.number }}
+          merge-method: squash

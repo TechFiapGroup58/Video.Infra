@@ -1,0 +1,39 @@
+# RabbitMQ - Bitnami Helm Chart (licenca Apache 2.0 / MIT)
+# Instalacao: helm install rabbitmq bitnami/rabbitmq -n fiapx -f k8s/03-rabbitmq-values.yaml
+#
+# Helm repo: helm repo add bitnami https://charts.bitnami.com/bitnami
+
+replicaCount: 1
+
+auth:
+  username: fiapx
+  # A senha e lida do secret fiapx-secrets
+  existingPasswordSecret: fiapx-secrets
+  existingSecretPasswordKey: RABBITMQ_PASSWORD
+
+persistence:
+  enabled: true
+  size: 2Gi          # minimo viavel
+  storageClass: gp2
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+metrics:
+  enabled: false     # desabilitado para economizar recursos
+
+service:
+  type: ClusterIP    # nao expoe externamente
+
+# Desabilita plugins nao usados
+extraConfiguration: |
+  total_memory_available_override_value = 400MB
+
+# NodeSelector para garantir que roda no unico node group
+nodeSelector: {}
+tolerations: []
